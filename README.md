@@ -40,4 +40,4 @@ npm start test.xlsx
 node ./index.js test.xlsx
 ```
 
-Если не указан 
+Если не указан --output — будет перезаписан оригинальный файл
