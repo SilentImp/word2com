@@ -7,7 +7,7 @@ const path = require("path");
 const fs = require("fs");
 const commandLineArgs = require("command-line-args");
 const { selectors, urls, MAX_CORES, WORDS_COUNT } = require('./config.js');
-const { addDomainSheet, addWordsSheet, chunkArray, readWords, combinations, getCombinationsList, domainsAvailability } = require('./utils.js');
+const { checkDaddy, addDomainSheet, addWordsSheet, chunkArray, readWords, combinations, getCombinationsList, domainsAvailability } = require('./utils.js');
 const puppeteer = require('puppeteer');
  
 
@@ -31,6 +31,12 @@ if (cluster.isMaster) {
         alias: "o",
         type: String,
       },
+      {
+        name: "key",
+        alias: "k",
+        type: String,
+        defaultValue: process.env.GO_DADDY_SECRET
+      },
     ];
     const args = commandLineArgs(optionDefinitions);
     
@@ -42,6 +48,13 @@ if (cluster.isMaster) {
       process.exit(1);
     }
     if (!args.output) args.output = args.input;
+
+    if (!args.key) {
+      process.stdout.write(
+        chalk`{red Need GoDaddy API Key}. Please use --key flag to specify it or add it to environment variable GO_DADDY_SECRET.\n`
+      );
+      process.exit(1);
+    }
 
     // Проверяем есть ли файл
     const inputPath = path.resolve(process.cwd(), args.input);
@@ -77,15 +90,19 @@ if (cluster.isMaster) {
     let report = {};
     let reportsCount = 0;
     // Дочерний процесс возвращает результат работы
-    cluster.on('message', (worker, msg) => {
-      report = {...report, ...msg};
+    cluster.on('message', async (worker, msg) => {
+      report = {...report, ...msg.reports};
       worker.disconnect();
       reportsCount++;
       if (reportsCount === chunks.length) {
+        // Опрашиваем goDaddy
+        const domainList = Object.keys(report);
+        const godaddy = await checkDaddy(domainList, args.key);
+
         // Собираем все отчеты в один и генерируем новый XLS файл
         const workbook = XLSX.utils.book_new();
         addWordsSheet(workbook, data);
-        addDomainSheet(workbook, report);
+        addDomainSheet(workbook, report, godaddy, msg.godaddyReport);
         XLSX.writeFile(workbook, args.output);
         spinner.stop();
         process.stdout.write(
@@ -126,7 +143,38 @@ if (cluster.isMaster) {
         const report = result.reduce((collector, domain) => ({...domain, ...collector}), {});
         reports = {...reports, ...report};
       }
-      cluster.worker.send(reports);
+      let godaddyReport = {};
+      const domainList = Object.keys(reports);
+      let domainListCount = domainList.length;
+      while(domainListCount--) {
+        await page.goto(`${urls.GODADDY_BROWSER}${domainList[domainListCount]}`, { 'waitUntil' : 'domcontentloaded' });
+        await page.waitForSelector(selectors.GODADDY_AVAILABILITY,{visible:true});
+        let isAvailable = 'N/A';
+        try {
+          isAvailable = await page.$eval(selectors.GODADDY_AVAILABILITY, element => element.innerText.includes('is available'));
+        } catch (error) {}
+        let primaryPrice = 'N/A';
+        try {
+          primaryPrice = await page.$eval(selectors.GODADDY_PRICE_PRIMARY, element => element ? element.innerText : 'N/A');
+        } catch (error) {}
+        let secondaryPrice = 'N/A';
+        try {
+          secondaryPrice = await page.$eval(selectors.GODADDY_PRICE_SECONDARY, element => element ? element.innerText : 'N/A');
+        } catch (error) {}
+        godaddyReport = {
+          ...godaddyReport,
+          [[domainList[domainListCount]]]: {
+            available: isAvailable,
+            primaryPrice,
+            secondaryPrice,
+          }
+        }
+      }
+
+      cluster.worker.send({
+        reports,
+        godaddyReport,
+      });
       await browser.close();
     } catch (error) {
       await browser.close();

@@ -1,3 +1,4 @@
+require('isomorphic-fetch');
 const XLSX = require('xlsx');
 const whois = require('whois');
 const chalk = require("chalk");
@@ -99,10 +100,24 @@ const domainsAvailability = domains => domains.map(domain => new Promise((resolv
   lookup(resolve, domain);
 }));
 
+// Ищет конкретный домен в отчете godaddy
+const getDomain = (domain, godaddy) => godaddy.domains.find(({domain: godaddyDomain})=>(godaddyDomain===domain));
+
 // Добавляет в эксель страницу доменов
-const addDomainSheet = (book, domains) => {
-  const data = Object.entries(domains).map(([domain, available]) => [domain, (available === true ? AVAILABLE : (available === null ? NO_INFORMATION : NOT_AVAILABLE))]);
-  const sheet = XLSX.utils.aoa_to_sheet(data);
+const addDomainSheet = (book, domains, godaddy, godaddyReport) => {
+  const data = Object.entries(domains).map(([domain, available]) => {
+    const daddy = getDomain(domain, godaddy) || {};
+    return [
+      domain, 
+      (available === true ? AVAILABLE : (available === null ? NO_INFORMATION : NOT_AVAILABLE)), 
+      daddy.available !== undefined ? (daddy.available ? AVAILABLE : NOT_AVAILABLE) : "", 
+      !daddy.price ? "" : Intl.NumberFormat('ru', { style: 'currency', currency: 'USD' }).format(daddy.price),
+      godaddyReport[domain].available ? AVAILABLE : NOT_AVAILABLE,
+      godaddyReport[domain].primaryPrice,
+      godaddyReport[domain].secondaryPrice,
+    ];
+  });
+  const sheet = XLSX.utils.aoa_to_sheet([['домен', 'whois', 'godaddy api', 'godaddy api стоимость', 'godaddy', 'стоимость за первый год', 'стоимость за следующие'],...data]);
   XLSX.utils.book_append_sheet(book, sheet, DOMAINS_SHEET);
 }
 
@@ -113,8 +128,24 @@ const addWordsSheet = (book, words) => {
   XLSX.utils.book_append_sheet(book, sheet, WORDS_SHEET);
 }
 
+// Проверяет домены через goDaddy
+const checkDaddy = async (domains, key) => {
+  const response = await fetch(urls.GODADDY, {
+    method: 'POST',
+    headers: {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+      'Authorization': `sso-key ${key}`,
+    },
+    body: JSON.stringify(domains)
+  });
+  if (!response.ok) return {domains:[]};
+  const data =  await response.json();
+  return data;
+}
 
 module.exports = {
+  checkDaddy,
   chunkArray,
   combinations,
   readWords,
