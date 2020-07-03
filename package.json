@@ -1,0 +1,30 @@
+{
+  "name": "word2com",
+  "version": "1.0.0",
+  "description": "Get words from XLS, create combinations and check related domains",
+  "main": "index.js",
+  "bin": {
+    "word2com": "./index.js"
+  },
+  "scripts": {
+    "start": "node ./index.js",
+    "patch": "npm version patch &&  && npm publish --tag latest",
+    "minor": "npm version minor &&  && npm publish --tag latest",
+    "major": "npm version major &&  && npm publish --tag latest",
+    "prepatch": "npm version prepatch && npm publish --tag next",
+    "preminor": "npm version preminor && npm publish --tag next",
+    "premajor": "npm version premajor && npm publish --tag next",
+    "prerelease": "npm version prerelease && npm publish --tag next"
+  },
+  "keywords": ["xls", "domains"],
+  "author": "Anton Nemtsev <thesilentimp@gmail.com>",
+  "license": "You can't use it if you are not ZloiTip",
+  "dependencies": {
+    "chalk": "^4.1.0",
+    "cli-spinner": "^0.2.10",
+    "command-line-args": "^5.1.1",
+    "puppeteer": "^4.0.1",
+    "whois": "^2.12.1",
+    "xlsx": "^0.16.3"
+  }
+}
