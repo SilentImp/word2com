@@ -1,5 +1,4 @@
 #! /usr/bin/env node
-
 const cluster = require('cluster');
 const Spinner = require('cli-spinner').Spinner;
 const XLSX = require('xlsx');
@@ -45,7 +44,7 @@ if (cluster.isMaster) {
     if (!args.output) args.output = args.input;
 
     // Проверяем есть ли файл
-    const inputPath = path.resolve(__dirname, args.input);
+    const inputPath = path.resolve(process.cwd(), args.input);
     if (!fs.existsSync(inputPath)) {
       process.stdout.write(
         chalk`{red file ${args.input} not found}. Full path: ${inputPath}.\n`

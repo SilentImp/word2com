@@ -8,10 +8,18 @@
 npx word2com input.xls
 ```
 
+# Установка глобально
+```
+npm i -g word2com
+word2com input.xls
+```
+
 # Установка
 
 В консоли:
 ```bash
+git clone git@github.com:SilentImp/word2com.git
+cd word2com
 npm ci
 ```
 
