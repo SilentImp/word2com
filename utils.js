@@ -107,7 +107,7 @@ const getDomain = (domain, godaddy) => godaddy.domains.find(({domain: godaddyDom
 const addDomainSheet = (book, reports) => {
   console.log(reports);
   console.log('domains: ');
-  console.log(Object.keys(reports));
+  console.log(JSON.stringify(Object.keys(reports)));
   const data = Object.entries(reports).map(([domain, info]) => {
     return [
       domain,

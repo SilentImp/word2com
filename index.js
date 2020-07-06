@@ -125,33 +125,57 @@ if (cluster.isMaster) {
     const browser = await puppeteer.launch({
       'defaultViewport' : { 'width' : 1400, 'height' : 6000 }
     });
+    let colorIndex = index;
+    while(colorIndex>colors.length) {
+      colorIndex-=colors.length;
+    }
     try {
       const page = await browser.newPage();
       page.setCacheEnabled(false);
       await page.goto(urls.COMBINER, { 'waitUntil' : 'domcontentloaded' });
       let reports = {};
-      let domainList;
+      let domainList = [];
       let wordSetCount = wordSet.length;
       while(wordSetCount--) {
-        const keywords = wordSet[wordSetCount];
-        process.stdout.write(
-          chalk`\n{${colors[index]} Requesting combinations for: ${JSON.stringify(keywords)}}\n`
-        );
-        await getCombinationsList(page).apply(null, keywords);
-        const words = await page.$$eval(selectors.COMBINATION_LIST, elements => elements.map(element => element.innerText));
-        domainList = words.map(word => `${word}.com`);
+        try {
+          const keywords = wordSet[wordSetCount];
+          process.stdout.write(
+            chalk`\n{${colors[colorIndex]} Requesting combinations for: ${JSON.stringify(keywords)}. Fork ${index}}\n`
+          );
+          await getCombinationsList(page).apply(null, keywords);
+          const words = await page.$$eval(selectors.COMBINATION_LIST, elements => elements.map(element => element.innerText));
+          domainList = [...words.map(word => `${word}.com`), ...domainList];
+        } catch(error) {
+          await page.screenshot({path: `error-${error.message}.png`});
+          continue;
+        }
       }
       process.stdout.write(
-        chalk`\n{${colors[index]} Domain List to check: ${JSON.stringify(domainList)}}\n`
+        chalk`\n{${colors[colorIndex]} Domain List to check: ${JSON.stringify(domainList)}. Fork ${index}}\n`
       );
 
       let domainListCount = domainList.length;
       while(domainListCount--) {
         process.stdout.write(
-          chalk`\n{${colors[index]} Cheking domain: ${domainList[domainListCount]}. ${((domainList.length - domainListCount)*100/domainList.length).toFixed(1)}% done. }\n`
+          chalk`\n{${colors[colorIndex]} Cheking domain: ${domainList[domainListCount]}. ${((domainList.length - domainListCount)*100/domainList.length).toFixed(1)}% done. Fork ${index}}\n`
         );
-        await page.goto(`${urls.GODADDY_BROWSER}${domainList[domainListCount]}`, { 'waitUntil' : 'domcontentloaded' });
-        await page.waitForSelector(selectors.GODADDY_AVAILABILITY,{visible:true});
+        try {
+          await page.goto(`${urls.GODADDY_BROWSER}${domainList[domainListCount]}`, { 'waitUntil' : 'domcontentloaded' });
+        } catch (error) {
+          process.stdout.write(
+            chalk`\n{red Error opening: ${domainList[domainListCount]}. Fork ${index}}\n`
+          );
+          continue;
+        }
+        try {
+          await page.waitForSelector(selectors.GODADDY_AVAILABILITY,{visible:true});
+        } catch (error) {
+          await page.screenshot({path: `error-${error.message}.png`});
+          process.stdout.write(
+            chalk`\n{red Error parsing DOM for: ${domainList[domainListCount]}. Fork ${index}}\n`
+          );
+          continue;
+        }
         let isAvailable = 'N/A';
         try {
           isAvailable = await page.$eval(selectors.GODADDY_AVAILABILITY, element => element.innerText.includes('is available'));
@@ -174,9 +198,16 @@ if (cluster.isMaster) {
         }
       }
 
+      process.stdout.write(
+        chalk`\n{green Word combinations parsed: ${JSON.stringify(wordSet)}. Fork ${index} closed.}\n`
+      );
       cluster.worker.send(reports);
       await browser.close();
     } catch (error) {
+      process.stdout.write(
+        chalk`\n{red Because of error word combinations skipped: ${JSON.stringify(wordSet)}. Fork ${index} closed.}\n`
+      );
+      cluster.worker.send({});
       await browser.close();
       console.log(error);
     }
