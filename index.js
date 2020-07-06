@@ -1,6 +1,5 @@
 #! /usr/bin/env node
 const cluster = require('cluster');
-const Spinner = require('cli-spinner').Spinner;
 const XLSX = require('xlsx');
 const chalk = require("chalk");
 const path = require("path");
@@ -8,13 +7,26 @@ const fs = require("fs");
 const commandLineArgs = require("command-line-args");
 const { selectors, urls, MAX_CORES, WORDS_COUNT } = require('./config.js');
 const { checkDaddy, addDomainSheet, addWordsSheet, chunkArray, readWords, combinations, getCombinationsList, domainsAvailability } = require('./utils.js');
-const puppeteer = require('puppeteer');
- 
+const puppeteer = require('puppeteer'); 
+const colors = [
+  'yellow',
+  'blue',
+  'magenta',
+  'cyan',
+  'white',
+  'blackBright',
+  'redBright',
+  'greenBright',
+  'yellowBright',
+  'blueBright',
+  'magentaBright',
+  'cyanBright',
+  'whiteBright',
+];
 
 // На каждый ноде процесс уходит по ядру.
 // Так что дочерних процессов — доступные минус один
 const numCPUs = Math.min(require('os').cpus().length, MAX_CORES); 
-
 
 if (cluster.isMaster) {
   (async () => {
@@ -31,43 +43,26 @@ if (cluster.isMaster) {
         alias: "o",
         type: String,
       },
-      {
-        name: "key",
-        alias: "k",
-        type: String,
-        defaultValue: process.env.GO_DADDY_SECRET
-      },
     ];
     const args = commandLineArgs(optionDefinitions);
     
     // Проверяем есть ли аргументы
     if (!args.input) {
       process.stdout.write(
-        chalk`{red XLSX filename missing}. Please use --input flag to specify it.\n`
+        chalk`\n{red XLSX filename missing}. Please use --input flag to specify it.\n`
       );
       process.exit(1);
     }
     if (!args.output) args.output = args.input;
 
-    if (!args.key) {
-      process.stdout.write(
-        chalk`{red Need GoDaddy API Key}. Please use --key flag to specify it or add it to environment variable GO_DADDY_SECRET.\n`
-      );
-      process.exit(1);
-    }
-
     // Проверяем есть ли файл
     const inputPath = path.resolve(process.cwd(), args.input);
     if (!fs.existsSync(inputPath)) {
       process.stdout.write(
-        chalk`{red file ${args.input} not found}. Full path: ${inputPath}.\n`
+        chalk`\n{red file ${args.input} not found}. Full path: ${inputPath}.\n`
       );
       process.exit(1);
     }
-
-    // Крутилка что бы не скучно ждать
-    const spinner = new Spinner('Работаем. А вы пока посмотрите, какая тут поебень крутится: %s');
-    spinner.start();
 
     try {
     
@@ -78,33 +73,37 @@ if (cluster.isMaster) {
     // Получаем все комбинации слов
     const words = [...combinations(data, WORDS_COUNT)];
 
+    process.stdout.write(
+      chalk`\n{yellow Word combinations: ${JSON.stringify(words)}.}\n`
+    );
+
     // Родительский процесс
     const chunks = chunkArray(words, Math.max(numCPUs - 1, 1));
 
-    chunks.map(chunk => {
+    process.stdout.write(
+      chalk`\n{yellow Forks created: ${chunks.length}.}\n`
+    );
+
+    chunks.map((chunk, index) => {
       // Создаем дочерний процесс
       const worker = cluster.fork();
       // Передаем в дочерний процесс все комбинации для обработки
-      worker.send(chunk);
+      worker.send({ chunk, index });
     });
     let report = {};
     let reportsCount = 0;
     // Дочерний процесс возвращает результат работы
     cluster.on('message', async (worker, msg) => {
-      report = {...report, ...msg.reports};
+      report = {...report, ...msg};
       worker.disconnect();
       reportsCount++;
       if (reportsCount === chunks.length) {
-        // Опрашиваем goDaddy
-        const domainList = Object.keys(report);
-        const godaddy = await checkDaddy(domainList, args.key);
 
         // Собираем все отчеты в один и генерируем новый XLS файл
         const workbook = XLSX.utils.book_new();
         addWordsSheet(workbook, data);
-        addDomainSheet(workbook, report, godaddy, msg.godaddyReport);
+        addDomainSheet(workbook, report);
         XLSX.writeFile(workbook, args.output);
-        spinner.stop();
         process.stdout.write(
           chalk`\n{green Success: xls created.}\n`
         );
@@ -113,7 +112,6 @@ if (cluster.isMaster) {
     });
 
   } catch (error) {
-    spinner.stop();
     process.stdout.write(
         chalk`\n{red Error: ${error.message}}\n`
     );
@@ -123,7 +121,7 @@ if (cluster.isMaster) {
   })();
 } else {
   // Дочерний процесс
-  process.on('message', async (wordSet) => {
+  process.on('message', async ({ chunk: wordSet, index}) => {
     const browser = await puppeteer.launch({
       'defaultViewport' : { 'width' : 1400, 'height' : 6000 }
     });
@@ -132,21 +130,26 @@ if (cluster.isMaster) {
       page.setCacheEnabled(false);
       await page.goto(urls.COMBINER, { 'waitUntil' : 'domcontentloaded' });
       let reports = {};
+      let domainList;
       let wordSetCount = wordSet.length;
       while(wordSetCount--) {
         const keywords = wordSet[wordSetCount];
+        process.stdout.write(
+          chalk`\n{${colors[index]} Requesting combinations for: ${JSON.stringify(keywords)}}\n`
+        );
         await getCombinationsList(page).apply(null, keywords);
         const words = await page.$$eval(selectors.COMBINATION_LIST, elements => elements.map(element => element.innerText));
-        const domains = words.map(word => `${word}.com`);
-        const domainsAvailabilityPromises = domainsAvailability(domains);
-        const result = await Promise.all(domainsAvailabilityPromises);
-        const report = result.reduce((collector, domain) => ({...domain, ...collector}), {});
-        reports = {...reports, ...report};
+        domainList = words.map(word => `${word}.com`);
       }
-      let godaddyReport = {};
-      const domainList = Object.keys(reports);
+      process.stdout.write(
+        chalk`\n{${colors[index]} Domain List to check: ${JSON.stringify(domainList)}}\n`
+      );
+
       let domainListCount = domainList.length;
       while(domainListCount--) {
+        process.stdout.write(
+          chalk`\n{${colors[index]} Cheking domain: ${domainList[domainListCount]}. ${((domainList.length - domainListCount)*100/domainList.length).toFixed(1)}% done. }\n`
+        );
         await page.goto(`${urls.GODADDY_BROWSER}${domainList[domainListCount]}`, { 'waitUntil' : 'domcontentloaded' });
         await page.waitForSelector(selectors.GODADDY_AVAILABILITY,{visible:true});
         let isAvailable = 'N/A';
@@ -161,8 +164,8 @@ if (cluster.isMaster) {
         try {
           secondaryPrice = await page.$eval(selectors.GODADDY_PRICE_SECONDARY, element => element ? element.innerText : 'N/A');
         } catch (error) {}
-        godaddyReport = {
-          ...godaddyReport,
+        reports = {
+          ...reports,
           [[domainList[domainListCount]]]: {
             available: isAvailable,
             primaryPrice,
@@ -171,10 +174,7 @@ if (cluster.isMaster) {
         }
       }
 
-      cluster.worker.send({
-        reports,
-        godaddyReport,
-      });
+      cluster.worker.send(reports);
       await browser.close();
     } catch (error) {
       await browser.close();
