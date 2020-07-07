@@ -1,6 +1,6 @@
 {
   "name": "word2com",
-  "version": "2.1.1",
+  "version": "2.1.2-0",
   "description": "Get words from XLS, create combinations and check related domains",
   "main": "index.js",
   "bin": {
