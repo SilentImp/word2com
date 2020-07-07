@@ -147,7 +147,8 @@ if (cluster.isMaster) {
           const words = await page.$$eval(selectors.COMBINATION_LIST, elements => elements.map(element => element.innerText));
           domainList = [...words.map(word => `${word}.com`), ...domainList];
         } catch(error) {
-          await page.screenshot({path: `error-${error.message}.png`});
+          console.error(error);
+          await page.screenshot({path: path.resolve(process.cwd(), `error-fork-${index}.png`)});
           continue;
         }
       }
@@ -171,7 +172,8 @@ if (cluster.isMaster) {
         try {
           await page.waitForSelector(selectors.GODADDY_AVAILABILITY,{visible:true});
         } catch (error) {
-          await page.screenshot({path: `error-${error.message}.png`});
+          console.error(error);
+          await page.screenshot({path: path.resolve(process.cwd(), `error-fork-${index}.png`)});
           process.stdout.write(
             chalk`\n{red Error parsing DOM for: ${domainList[domainListCount]}. Fork ${index}}\n`
           );
