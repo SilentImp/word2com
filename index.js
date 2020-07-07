@@ -71,7 +71,8 @@ if (cluster.isMaster) {
     // Получаем все слова
     const data = readWords(workbook);
     // Получаем все комбинации слов
-    const words = [...combinations(data, WORDS_COUNT)];
+    let words = [...combinations(data, WORDS_COUNT)];
+    words = [...words, ...([...words].map(item => [...item].reverse()))];
 
     process.stdout.write(
       chalk`\n{yellow Word combinations: ${JSON.stringify(words)}.}\n`
