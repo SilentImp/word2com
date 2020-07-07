@@ -1,4 +1,3 @@
-require('isomorphic-fetch');
 const XLSX = require('xlsx');
 const whois = require('whois');
 const chalk = require("chalk");
@@ -76,33 +75,6 @@ const getCombinationsList = page => async (...words) => {
   await page.waitForSelector(selectors.COMBINATION_LIST);
 }
 
-// Проверяет массив доменов — свободны или заняты
-const domainsAvailability = domains => domains.map(domain => new Promise((resolve) => {
-
-  let repeatCount = LOOKUP_RETRY_COUNT;
-  const lookup = (resolve, domain) => {
-
-    whois.lookup(domain, {timeout:LOOKUP_TIMEOUT}, function(error, data) {
-      if(error) {
-        if (repeatCount > 0) {
-          repeatCount--;
-          setTimeout(()=>{lookup(resolve, domain)}, LOOKUP_DELAY);
-        } else {
-          resolve({[[domain]]: null});
-        }
-      } else {
-        const isTaken = data.indexOf('Domain Name:') !== -1;
-        resolve({[[domain]]: !isTaken});
-      }
-    });
-
-  };
-  lookup(resolve, domain);
-}));
-
-// Ищет конкретный домен в отчете godaddy
-const getDomain = (domain, godaddy) => godaddy.domains.find(({domain: godaddyDomain})=>(godaddyDomain===domain));
-
 // Добавляет в эксель страницу доменов
 const addDomainSheet = (book, reports) => {
   console.log(reports);
@@ -127,29 +99,12 @@ const addWordsSheet = (book, words) => {
   XLSX.utils.book_append_sheet(book, sheet, WORDS_SHEET);
 }
 
-// Проверяет домены через goDaddy
-const checkDaddy = async (domains, key) => {
-  const response = await fetch(urls.GODADDY, {
-    method: 'POST',
-    headers: {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      'Authorization': `sso-key ${key}`,
-    },
-    body: JSON.stringify(domains)
-  });
-  if (!response.ok) return {domains:[]};
-  const data =  await response.json();
-  return data;
-}
 
 module.exports = {
-  checkDaddy,
   chunkArray,
   combinations,
   readWords,
   getCombinationsList,
-  domainsAvailability,
   addDomainSheet,
   addWordsSheet,
 }
