@@ -24,7 +24,6 @@
   "license": "You can't use it if you are not ZloiTip",
   "dependencies": {
     "chalk": "^4.1.0",
-    "cli-spinner": "^0.2.10",
     "command-line-args": "^5.1.1",
     "isomorphic-fetch": "^2.2.1",
     "puppeteer": "^4.0.1",
